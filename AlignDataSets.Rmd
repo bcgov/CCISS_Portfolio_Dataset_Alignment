@@ -1,0 +1,107 @@
+---
+title: "Compile Tree by Site Series Info"
+author: "Kiri Daust/Will MacKenzie"
+date: "04/06/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+require(dplyr)
+require(ggplot2)
+require(MASS)
+require(magrittr)
+require(foreach)
+require(reshape2)
+require(reticulate)
+require(Rcpp)
+library(gridExtra)
+library(data.table)
+library(scales)
+library(tidyr)
+library(magrittr)
+library(ggthemes)
+library(flextable)
+require(rgdal)
+require(tmap)
+library(sf)
+```
+
+Load data
+
+```{r load data sets}
+##Set drive with cloud data
+if(dir.exists("C:/users/whmacken/Sync")){
+  cloud_dir <- "C:/users/whmacken/Sync/CCISS_data/CommonTables/"
+}else{
+  cloud_dir <- "C:/Users/kirid/Sync/CCISS_data/CommonTables/"
+}
+
+###Read in data
+## 1. All BGCS (info table from USA_BGC project)
+  bgc <- fread(paste0(cloud_dir,"All_BGCs_v11_21.csv"),data.table = F)
+
+## 2. All Site Series (info table from from USA_BGC project)
+  ss <- fread(paste0(cloud_dir, "WNA_SSeries_v11.csv"),data.table = F)
+
+## 3. All Edatopic (info table from USA_BGC project)
+  eda <- fread(paste0(cloud_dir, "Edatopic_v11_20.csv"),data.table = F)
+
+## 4. All aSMR (modelled in aSMR_X_rSMR project)
+  asmr <- fread(paste0(cloud_dir, "modelled_WNAv11_rSMR_aSMR_grid_HalfStep.csv"),data.table = F)
+
+## 5. All Feasibility (in part modelled in TreeSuitabilityPrediction project)
+
+  feasible <- fread(paste0(cloud_dir, "Feasibility_v11_21.csv"),data.table = F)
+
+  ## 6. All Site Index (modelled in SIBEC_Modelled project)
+ sibec <- fread(paste0(cloud_dir, "PredSI_May2020.csv"),data.table = F)
+  
+```
+   
+   
+   SuitTable <- fread("InputsGit/Feasibility_v11_21.csv") ##tree spp suitability
+SuitTable <- unique(SuitTable)
+
+colnames(SuitTable)[2:4] <- c("SS_NoSpace","Spp","Suitability")
+SuitTable <- SuitTable[,c("BGC","SS_NoSpace","Spp","Suitability")]
+
+SIBEC <- fread("InputsGit/PredSI_May2020.csv") ###import SI data (currently from BART)
+
+SIBEC <- SIBEC[,c("SS_NoSpace","Spp","SIPred")] %>% set_colnames(c("SS_NoSpace","TreeSpp","MeanPlotSiteIndex"))
+
+if(file.exists(paste0(cloud_dir,"CCISSPred.Rdata"))){
+  load(paste0(cloud_dir,"CCISSPred.Rdata"))
+}else{
+  ### run CCISS function to predict Site Series
+  load(paste0(cloud_dir, "WNAv11_35_VAR_SubZone_ranger.Rdata"))
+  Edatope <- fread("./InputsGit/Edatopic_v11_20.csv",data.table = F)
+  rawDat <- fread(paste0(cloud_dir,"PortfolioFiles/",inputDatName),data.table = F)
+  CCISSPred <- CCISS_Spp(Y1 = rawDat,BGCmodel = BGCmodel,E1 = Edatope)
+  save(CCISSPred, file = paste0(cloud_dir,"CCISSPred.Rdata"))
+}
+
+SSPredFull <- CCISSPred[[1]]
+colnames(SSPredFull)[1] <- "MergedBGC"
+SSPredFull <- SSPredFull[grep("01",SSPredFull$SSCurrent),]
+SSPredFull$CurrBGC <- gsub("/.*","", SSPredFull$SSCurrent)
+
+#SSPredFull <- fread("InputsGit/SunshineSSPred.csv") ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
+SSPredFull <- SSPredFull[,c("MergedBGC", "Source", "SS_NoSpace", "SSprob", "SSCurrent", 
+                          "FuturePeriod", "SiteNo","CurrBGC")]
+
+##remove cases where not all timeperiods available
+SSPredFull <- as.data.table(SSPredFull)
+temp <- SSPredFull[,.(Num = length(unique(FuturePeriod))), by = c("SiteNo","SSCurrent")]
+temp <- temp[Num == 3,-c("Num")]
+SSPredFull <- SSPredFull[temp,on = c("SiteNo","SSCurrent")]
+SSPredFull[,SiteNo := as.numeric(SiteNo)]
+
+analUnits <- fread(paste0(cloud_dir,"PortfolioFiles/AnalysisUnits.csv"))
+setkey(SSPredFull, SiteNo)
+setkey(analUnits, ID1)
+SSPredFull <- SSPredFull[analUnits]
+
+SSPredSave <- SSPredFull
+```
+
