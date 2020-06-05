@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 require(dplyr)
 require(ggplot2)
 require(MASS)
@@ -39,69 +39,67 @@ if(dir.exists("C:/users/whmacken/Sync")){
 
 ###Read in data
 ## 1. All BGCS (info table from USA_BGC project)
-  bgc <- fread(paste0(cloud_dir,"All_BGCs_v11_21.csv"),data.table = F)
+bgc <- fread(paste0(cloud_dir,"All_BGCs_v11_21.csv"))
+bgc_small <- bgc[,.(Source,Zone,BGC = Map_Label)]
 
 ## 2. All Site Series (info table from from USA_BGC project)
-  ss <- fread(paste0(cloud_dir, "WNA_SSeries_v11.csv"),data.table = F)
+ss <- fread(paste0(cloud_dir, "WNA_SSeries_v11.csv"))
+ss_small <- ss[,.(BGC, SS_NoSpace)]
 
 ## 3. All Edatopic (info table from USA_BGC project)
-  eda <- fread(paste0(cloud_dir, "Edatopic_v11_20.csv"),data.table = F)
+eda <- fread(paste0(cloud_dir, "Edatopic_v11_20.csv"))
+eda_small <- eda[,.(SS_NoSpace,Edatopic,Special,Codes)]
 
 ## 4. All aSMR (modelled in aSMR_X_rSMR project)
-  asmr <- fread(paste0(cloud_dir, "modelled_WNAv11_rSMR_aSMR_grid_HalfStep.csv"),data.table = F)
+asmr <- fread(paste0(cloud_dir, "modelled_WNAv11_rSMR_aSMR_grid_HalfStep.csv"))
 
 ## 5. All Feasibility (in part modelled in TreeSuitabilityPrediction project)
+feasible <- fread(paste0(cloud_dir, "Feasibility_v11_21.csv"))
+feas_small <- feasible[,.(SS_NoSpace, Spp, Feasible)]
 
-  feasible <- fread(paste0(cloud_dir, "Feasibility_v11_21.csv"),data.table = F)
-
-  ## 6. All Site Index (modelled in SIBEC_Modelled project)
- sibec <- fread(paste0(cloud_dir, "PredSI_May2020.csv"),data.table = F)
+## 6. All Site Index (modelled in SIBEC_Modelled project)
+sibec <- fread(paste0(cloud_dir, "PredSI_May2020.csv"))
   
 ```
    
-   
-   SuitTable <- fread("InputsGit/Feasibility_v11_21.csv") ##tree spp suitability
-SuitTable <- unique(SuitTable)
+Combine and show missing
 
-colnames(SuitTable)[2:4] <- c("SS_NoSpace","Spp","Suitability")
-SuitTable <- SuitTable[,c("BGC","SS_NoSpace","Spp","Suitability")]
+```{r combine}
+any(duplicated(bgc_small))
+any(duplicated(ss_small))
+ss_small[, fD := .N > 1, by = key(ss_small)]
+ss_small[(fD)]
+any(duplicated(sibec))
+sibec[,fD := .N > 1, by = key(sibec)]
+sibec[(fD)]
+any(duplicated(feas_small))
+any(duplicated(eda_small))
 
-SIBEC <- fread("InputsGit/PredSI_May2020.csv") ###import SI data (currently from BART)
+ss_small <- unique(ss_small)
+sibec <- unique(sibec)
+feas_small <- unique(feas_small)
+eda_small <- unique(eda_small)
 
-SIBEC <- SIBEC[,c("SS_NoSpace","Spp","SIPred")] %>% set_colnames(c("SS_NoSpace","TreeSpp","MeanPlotSiteIndex"))
+setkey(bgc_small,BGC)
+setkey(ss_small,BGC,SS_NoSpace)
+bgc_ss <- merge(bgc_small, ss_small, all = T)
+bgc_NoSS <- bgc_ss[is.na(BGC),SS_NoSpace]
+ss_NoBGC <- bgc_ss[is.na(SS_NoSpace),BGC]
 
-if(file.exists(paste0(cloud_dir,"CCISSPred.Rdata"))){
-  load(paste0(cloud_dir,"CCISSPred.Rdata"))
-}else{
-  ### run CCISS function to predict Site Series
-  load(paste0(cloud_dir, "WNAv11_35_VAR_SubZone_ranger.Rdata"))
-  Edatope <- fread("./InputsGit/Edatopic_v11_20.csv",data.table = F)
-  rawDat <- fread(paste0(cloud_dir,"PortfolioFiles/",inputDatName),data.table = F)
-  CCISSPred <- CCISS_Spp(Y1 = rawDat,BGCmodel = BGCmodel,E1 = Edatope)
-  save(CCISSPred, file = paste0(cloud_dir,"CCISSPred.Rdata"))
-}
+setkey(feas_small, SS_NoSpace, Spp)
+ss_feas <- merge(ss_small, feas_small, by = "SS_NoSpace", all = T)
+ss_NoFeas <- ss_feas[is.na(Spp),SS_NoSpace]
+feas_NoSS <- ss_feas[is.na(BGC),SS_NoSpace]
 
-SSPredFull <- CCISSPred[[1]]
-colnames(SSPredFull)[1] <- "MergedBGC"
-SSPredFull <- SSPredFull[grep("01",SSPredFull$SSCurrent),]
-SSPredFull$CurrBGC <- gsub("/.*","", SSPredFull$SSCurrent)
+setkey(sibec, SS_NoSpace, Spp)
+ss_feas_sibec <- merge(ss_feas, sibec, by = c("SS_NoSpace","Spp"), all = T)
+sibec_missingSpp <- ss_feas_sibec[,all(is.na(SIPred)), by = Spp][(V1),Spp]
+sibec_missingSS <- ss_feas_sibec[,all(is.na(SIPred)), by = SS_NoSpace][(V1),SS_NoSpace]
+temp <- ss_feas_sibec[(!Spp %in% sibec_missingSpp) & (!SS_NoSpace %in% sibec_missingSS),]
 
-#SSPredFull <- fread("InputsGit/SunshineSSPred.csv") ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
-SSPredFull <- SSPredFull[,c("MergedBGC", "Source", "SS_NoSpace", "SSprob", "SSCurrent", 
-                          "FuturePeriod", "SiteNo","CurrBGC")]
+setkey(eda_small,SS_NoSpace)
+ss_eda <- merge(ss_small, eda_small, all = T)
 
-##remove cases where not all timeperiods available
-SSPredFull <- as.data.table(SSPredFull)
-temp <- SSPredFull[,.(Num = length(unique(FuturePeriod))), by = c("SiteNo","SSCurrent")]
-temp <- temp[Num == 3,-c("Num")]
-SSPredFull <- SSPredFull[temp,on = c("SiteNo","SSCurrent")]
-SSPredFull[,SiteNo := as.numeric(SiteNo)]
 
-analUnits <- fread(paste0(cloud_dir,"PortfolioFiles/AnalysisUnits.csv"))
-setkey(SSPredFull, SiteNo)
-setkey(analUnits, ID1)
-SSPredFull <- SSPredFull[analUnits]
-
-SSPredSave <- SSPredFull
 ```
 
