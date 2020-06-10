@@ -65,23 +65,24 @@ sibec <- fread(paste0(cloud_dir, "PredSI_May2020.csv"))
 These are the duplicates in each table
 
 ```{r duplicates}
+outFold <- "./Duplicated/"
 any(duplicated(bgc_small))
 any(duplicated(ss_small))
 ss_small[, fD := .N > 1, by = .(SS_NoSpace)]
-ss_small[(fD)]
+fwrite(ss_small[(fD)], paste0(outFold,"SiteSeries.csv"))
 ss_small[,fD := NULL]
 ss_small <- unique(ss_small)
 any(duplicated(sibec))
 sibec[,fD := .N > 1, by = .(SS_NoSpace,Spp)]
-sibec[(fD)]
+fwrite(sibec[(fD)], paste0(outFold,"Sibec.csv"))
 sibec <- unique(sibec[,!"fD"], by = c("SS_NoSpace","Spp"))
 any(duplicated(feas_small))
 feas_small[,fD := .N > 1, by = .(SS_NoSpace,Spp)]
-feas_small[(fD)]
+fwrite(feas_small[(fD)],paste0(outFold,"Feasibility.csv"))
 feas_small <- unique(feas_small[,!"fD"], by = c("SS_NoSpace","Spp"))
 any(duplicated(eda_small))
 eda_small[,fD := .N > 1, by = .(SS_NoSpace,Edatopic,Special)]
-eda_small[(fD)]
+fwrite(eda_small[(fD)],paste0(outFold,"Edatopic.csv"))
 eda_small <- unique(eda_small[,!"fD"])
 ```
 
@@ -90,18 +91,18 @@ eda_small <- unique(eda_small[,!"fD"])
 setkey(bgc_small,BGC)
 setkey(ss_small,BGC,SS_NoSpace)
 bgc_ss <- merge(bgc_small, ss_small, all = T)
-bgc_NoSS <- bgc_ss[is.na(BGC),SS_NoSpace]
-ss_NoBGC <- bgc_ss[is.na(SS_NoSpace),BGC]
+bgc_NoSS <- bgc_ss[is.na(BGC),.(SS_NoSpace)]
+ss_NoBGC <- bgc_ss[is.na(SS_NoSpace),.(BGC)]
 
 setkey(feas_small, SS_NoSpace, Spp)
 ss_feas <- merge(ss_small, feas_small, by = "SS_NoSpace", all = T)
-ss_NoFeas <- ss_feas[is.na(Spp),SS_NoSpace]
-feas_NoSS <- ss_feas[is.na(BGC),SS_NoSpace]
+ss_NoFeas <- ss_feas[is.na(Spp),.(SS_NoSpace)]
+feas_NoSS <- ss_feas[is.na(BGC),.(SS_NoSpace)]
 
 setkey(sibec, SS_NoSpace, Spp)
 ss_feas_sibec <- merge(ss_feas, sibec, by = c("SS_NoSpace","Spp"), all = T)
-sibec_missingSpp <- ss_feas_sibec[,all(is.na(SIPred)), by = Spp][(V1),Spp]
-sibec_missingSS <- ss_feas_sibec[,all(is.na(SIPred)), by = SS_NoSpace][(V1),SS_NoSpace]
+sibec_missingSpp <- ss_feas_sibec[,all(is.na(SIPred)), by = Spp][(V1),.(Spp)]
+sibec_missingSS <- ss_feas_sibec[,all(is.na(SIPred)), by = SS_NoSpace][(V1),.(SS_NoSpace)]
 temp <- ss_feas_sibec[(!Spp %in% sibec_missingSpp) & (!SS_NoSpace %in% sibec_missingSS),]
 
 setkey(eda_small,SS_NoSpace)
@@ -109,8 +110,18 @@ ss_eda <- merge(ss_small, eda_small, all = T)
 
 setkey(asmr, BGC)
 bgc_asmr <- merge(bgc_small, asmr, all = T)
-asmr_NoBGC <- bgc_asmr[is.na(rSMR0),BGC]
-bgc_NoASMR <- bgc_asmr[is.na(Zone),BGC]
+asmr_NoBGC <- bgc_asmr[is.na(rSMR0),.(BGC)]
+bgc_NoASMR <- bgc_asmr[is.na(Zone),.(BGC)]
+
+outFold <- "./Missing/"
+fwrite(bgc_NoSS, paste0(outFold, "BGC!SS.csv"))
+fwrite(ss_NoBGC, paste0(outFold, "SS!BGC.csv"))
+fwrite(ss_NoFeas, paste0(outFold, "SS!Feas.csv"))
+fwrite(feas_NoSS, paste0(outFold, "Feas!SS.csv"))
+fwrite(sibec_missingSpp, paste0(outFold, "Feas!SI_Spp.csv"))
+fwrite(sibec_missingSS, paste0(outFold, "Feas!SI_SS.csv"))
+fwrite(asmr_NoBGC, paste0(outFold, "aSMR!BGC.csv"))
+fwrite(bgc_NoASMR, paste0(outFold, "BGC!aSMR.csv"))
 ```
 
 1. There are no BGCs without a matching SS. SS without matching BGCs are `r ss_NoBGC`.
