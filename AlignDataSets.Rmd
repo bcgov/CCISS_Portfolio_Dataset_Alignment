@@ -59,7 +59,10 @@ feas_small <- feasible[,.(SS_NoSpace, Spp, Feasible)]
 
 ## 6. All Site Index (modelled in SIBEC_Modelled project)
 sibec <- fread(paste0(cloud_dir, "PredSI_May2020.csv"))
-  
+
+## 7. SIBEC 2013 summarised
+sibec13 <- fread(paste0(cloud_dir, "SIBEC_2013_Summary.csv"))
+colnames(sibec13)[2:3] <- c("Spp","SI13")
 ```
    
 These are the duplicates in each table
@@ -84,6 +87,7 @@ any(duplicated(eda_small))
 eda_small[,fD := .N > 1, by = .(SS_NoSpace,Edatopic,Special)]
 fwrite(eda_small[(fD)],paste0(outFold,"Edatopic.csv"))
 eda_small <- unique(eda_small[,!"fD"])
+sibec13 <- unique(sibec13)
 ```
 
 ```{r find_missing}
@@ -101,9 +105,13 @@ feas_NoSS <- ss_feas[is.na(BGC),.(SS_NoSpace)]
 
 setkey(sibec, SS_NoSpace, Spp)
 ss_feas_sibec <- merge(ss_feas, sibec, by = c("SS_NoSpace","Spp"), all = T)
+
 sibec_missingSpp <- ss_feas_sibec[,all(is.na(SIPred)), by = Spp][(V1),.(Spp)]
 sibec_missingSS <- ss_feas_sibec[,all(is.na(SIPred)), by = SS_NoSpace][(V1),.(SS_NoSpace)]
 temp <- ss_feas_sibec[(!Spp %in% sibec_missingSpp) & (!SS_NoSpace %in% sibec_missingSS),]
+##add SIBEC 2013 approximation
+ss_feas_sibec <- merge(ss_feas_sibec, sibec13, by = c("SS_NoSpace","Spp"),all = T)
+
 
 setkey(eda_small,SS_NoSpace)
 ss_eda <- merge(ss_small, eda_small, all = T)
