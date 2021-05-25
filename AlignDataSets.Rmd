@@ -1,5 +1,5 @@
 ---
-title: "Compile Tree by Site Series Info"
+title: "Check Table Congruity for CCISS information Tables"
 author: "Kiri Daust/Will MacKenzie"
 date: "04/06/2020"
 output: html_document
@@ -31,31 +31,32 @@ Load data
 
 ```{r load data sets}
 ##Set drive with cloud data
-if(dir.exists("C:/users/whmacken/Sync")){
-  cloud_dir <- "C:/users/whmacken/Sync/CCISS_data/CommonTables/"
+if(dir.exists("F:/OneDrive - Government of BC/CCISSv12/")){
+  cloud_dir <- "F:/OneDrive - Government of BC/CCISSv12/"
 }else{
   cloud_dir <- "C:/Users/kirid/Sync/CCISS_data/CommonTables/"
 }
 
 ###Read in data
 ## 1. All BGCS (info table from USA_BGC project)
-bgc <- fread(paste0(cloud_dir,"All_BGCs_v11_21.csv"))
-bgc_small <- bgc[,.(Source,Zone,BGC = Map_Label)]
+bgc_modelled <- fread(paste0(cloud_dir,"AllmodelledBGCs_v12.csv"))
+bgc_modelled$modelled <- "yes"
+bgc.info <- fread(paste0(cloud_dir,"All_BGCs_Info_v12_1.csv")) %>% dplyr::select(Source, Zone, BGC)
 
 ## 2. All Site Series (info table from from USA_BGC project)
-ss <- fread(paste0(cloud_dir, "WNA_SSeries_v11.csv"))
-ss_small <- ss[,.(BGC, SS_NoSpace)]
+ss.list <- fread(paste0(cloud_dir, "WNA_SSeries_v12.csv"))
+#ss.list <- ss[,.(BGC, SS_NoSpace)]
 
 ## 3. All Edatopic (info table from USA_BGC project)
-eda <- fread(paste0(cloud_dir, "Edatopic_v11_20.csv"))
+eda <- fread(paste0(cloud_dir, "Edatopic_v12_1.csv"))
 eda_small <- eda[,.(SS_NoSpace,Edatopic,Special,Codes)]
 
 ## 4. All aSMR (modelled in aSMR_X_rSMR project)
-asmr <- fread(paste0(cloud_dir, "modelled_WNAv11_rSMR_aSMR_grid_HalfStep.csv"))
+asmr <- fread(paste0(cloud_dir, "modelled_WNAv12_rSMR_aSMR_grid_HalfStep.csv"))
 
 ## 5. All Feasibility (in part modelled in TreeSuitabilityPrediction project)
-feasible <- fread(paste0(cloud_dir, "Feasibility_v11_21.csv"))
-feas_small <- feasible[,.(SS_NoSpace, Spp, Feasible)]
+feasible <- fread(paste0(cloud_dir, "Feasibility_v12_1.csv"))
+feas.list <- feasible[,.(SS_NoSpace, Spp, Feasible)]
 
 ## 6. All Site Index (modelled in SIBEC_Modelled project)
 sibec <- fread(paste0(cloud_dir, "PredSI_May2020.csv"))
@@ -66,36 +67,64 @@ These are the duplicates in each table
 
 ```{r duplicates}
 outFold <- "./Duplicated/"
-any(duplicated(bgc_small))
-any(duplicated(ss_small))
-ss_small[, fD := .N > 1, by = .(SS_NoSpace)]
-fwrite(ss_small[(fD)], paste0(outFold,"SiteSeries.csv"))
-ss_small[,fD := NULL]
-ss_small <- unique(ss_small)
-any(duplicated(sibec))
-sibec[,fD := .N > 1, by = .(SS_NoSpace,Spp)]
-fwrite(sibec[(fD)], paste0(outFold,"Sibec.csv"))
-sibec <- unique(sibec[,!"fD"], by = c("SS_NoSpace","Spp"))
-any(duplicated(feas_small))
-feas_small[,fD := .N > 1, by = .(SS_NoSpace,Spp)]
-fwrite(feas_small[(fD)],paste0(outFold,"Feasibility.csv"))
-feas_small <- unique(feas_small[,!"fD"], by = c("SS_NoSpace","Spp"))
+any(duplicated(bgc_modelled))
+any(duplicated(bgc.info))
+### site series
+any(duplicated(ss.list))
+ss.list[, fD := .N > 1, by = .(SS_NoSpace)]
+fwrite(ss.list[(fD)], paste0(outFold,"SiteSeries_duplicated.csv"))
+ss.list[,fD := NULL]
+ss.list <- unique(ss.list)
+### edatopic
 any(duplicated(eda_small))
 eda_small[,fD := .N > 1, by = .(SS_NoSpace,Edatopic,Special)]
-fwrite(eda_small[(fD)],paste0(outFold,"Edatopic.csv"))
+fwrite(eda_small[(fD)],paste0(outFold,"Edatopic_duplicated.csv"))
 eda_small <- unique(eda_small[,!"fD"])
+###feasibility
+any(duplicated(feas.list))
+feas.list[,fD := .N > 1, by = .(SS_NoSpace,Spp)]
+fwrite(feas.list[(fD)],paste0(outFold,"Feasibility_duplicated.csv"))
+feas.list <- unique(feas.list[,!"fD"], by = c("SS_NoSpace","Spp"))
+
+### sibec
+any(duplicated(sibec))
+sibec[,fD := .N > 1, by = .(SS_NoSpace,Spp)]
+fwrite(sibec[(fD)], paste0(outFold,"Sibec_duplicated.csv"))
+sibec <- unique(sibec[,!"fD"], by = c("SS_NoSpace","Spp"))
 ```
 
 ```{r find_missing}
 
-setkey(bgc_small,BGC)
-setkey(ss_small,BGC,SS_NoSpace)
-bgc_ss <- merge(bgc_small, ss_small, all = T)
+### compare BGC_modelled with BGC list
+setkey(bgc_modelled,BGC)
+setkey(bgc.info, BGC)
+###matching BGC in model and list of units
+bgc_compare <- merge(bgc_modelled, bgc.info, all = T)
+bgc_no.info <- bgc_compare[is.na(modelled),.(BGC)]
+bgc_no.model <- bgc_compare[is.na(Source),.(BGC)]
+
+###matching modelled BGCs and Site Series
+setkey(bgc_modelled,BGC)
+setkey(ss.list,BGC,SS_NoSpace)
+bgc_ss <- merge(bgc_modelled, ss.list, all = T)
 bgc_NoSS <- bgc_ss[is.na(BGC),.(SS_NoSpace)]
 ss_NoBGC <- bgc_ss[is.na(SS_NoSpace),.(BGC)]
 
-setkey(feas_small, SS_NoSpace, Spp)
-ss_feas <- merge(ss_small, feas_small, by = "SS_NoSpace", all = T)
+###matching site series and edatopic space
+setkey(eda_small,SS_NoSpace)
+ss_eda <- merge(ss.list, eda_small, all = T)
+
+setkey(asmr, BGC)
+bgc_asmr <- merge(bgc_modelled, asmr, all = T)
+asmr_NoBGC <- bgc_asmr[is.na(rSMR0),.(BGC)]
+bgc_NoASMR <- bgc_asmr[is.na(Zone),.(BGC)]
+
+###missing edatopic space by BGC
+
+
+###matching feasibility and site series
+setkey(feas.list, SS_NoSpace, Spp)
+ss_feas <- merge(ss.list, feas.list, by = "SS_NoSpace", all = T)
 ss_NoFeas <- ss_feas[is.na(Spp),.(SS_NoSpace)]
 feas_NoSS <- ss_feas[is.na(BGC),.(SS_NoSpace)]
 
@@ -106,10 +135,10 @@ sibec_missingSS <- ss_feas_sibec[,all(is.na(SIPred)), by = SS_NoSpace][(V1),.(SS
 temp <- ss_feas_sibec[(!Spp %in% sibec_missingSpp) & (!SS_NoSpace %in% sibec_missingSS),]
 
 setkey(eda_small,SS_NoSpace)
-ss_eda <- merge(ss_small, eda_small, all = T)
+ss_eda <- merge(ss.list, eda_small, all = T)
 
 setkey(asmr, BGC)
-bgc_asmr <- merge(bgc_small, asmr, all = T)
+bgc_asmr <- merge(bgc_modelled, asmr, all = T)
 asmr_NoBGC <- bgc_asmr[is.na(rSMR0),.(BGC)]
 bgc_NoASMR <- bgc_asmr[is.na(Zone),.(BGC)]
 
