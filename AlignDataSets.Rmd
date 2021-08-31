@@ -4,6 +4,7 @@ author: "Kiri Daust/Will MacKenzie"
 date: "04/06/2020"
 output: html_document
 ---
+This code compares the information tables of CCISS 
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
@@ -32,40 +33,53 @@ Load data
 ```{r load data sets}
 ##Set drive with cloud data
 if(dir.exists("F:/OneDrive - Government of BC/CCISSv12/")){
-  cloud_dir <- "F:/OneDrive - Government of BC/CCISSv12/"
+  cloud_dir <- "F:/OneDrive - Government of BC/CCISSv12/latest_CCISS_tool_files/"
 }else{
   cloud_dir <- "C:/Users/kirid/Sync/CCISS_data/CommonTables/"
 }
 
 ###Read in data
+## 0. List of retired BGCs and site series
+retiredSS <- fread(paste0(cloud_dir, "Retired_SS.csv")) %>% dplyr::select(Retire, SS_NoSpace)
+retiredBGC <- fread(paste0(cloud_dir,"All_BGCs_Info_v12_2.csv")) %>% filter(Retire == 'x') %>% dplyr::select(BGC) 
+
 ## 1. All BGCS (info table from USA_BGC project)
-bgc_modelled <- fread(paste0(cloud_dir,"AllmodelledBGCs_v12.csv"))
+bgc_modelled <- fread(paste0(cloud_dir,"AllmodelledBGCs_v12_2.csv"))
 bgc_modelled$modelled <- "yes"
-bgc.info <- fread(paste0(cloud_dir,"All_BGCs_Info_v12_1.csv")) %>% dplyr::select(Source, Zone, BGC)
+bgc.info <- fread(paste0(cloud_dir,"All_BGCs_Info_v12_2.csv")) %>% filter(!Retire == 'x') %>% 
+  dplyr::select(Source, Zone, BGC, DataSet)
 
 ## 2. All Site Series (info table from from USA_BGC project)
-ss.list <- fread(paste0(cloud_dir, "WNA_SSeries_v12.csv"))
+ss.list <- fread(paste0(cloud_dir, "WNA_SSeries_v12_9.csv"))#%>% filter(!Retire == 'x') %>% dplyr::select(-Retire)
 #ss.list <- ss[,.(BGC, SS_NoSpace)]
 
 ## 3. All Edatopic (info table from USA_BGC project)
-eda <- fread(paste0(cloud_dir, "Edatopic_v12_1.csv"))
-eda_small <- eda[,.(SS_NoSpace,Edatopic,Special,Codes)]
+eda <- fread(paste0(cloud_dir, "Edatopic_v12_9.csv")) 
+## remove retired site series
+setkey(eda, SS_NoSpace)
+setkey(retiredSS, SS_NoSpace)
+ss_eda <- merge(eda, retiredSS, all = T) #%>% filter(is.na(Retire))
+#fwrite(ss_eda,paste0(cloud_dir, "Edatopic_v12_2.csv")) 
+eda_small <- ss_eda[,.(SS_NoSpace,Edatopic)]
+eda.space <- fread("./inputs/edatopic_space.csv")
 
 ## 4. All aSMR (modelled in aSMR_X_rSMR project)
-asmr <- fread(paste0(cloud_dir, "modelled_WNAv12_rSMR_aSMR_grid_HalfStep.csv"))
+asmr <- fread(paste0(cloud_dir, "modelled_rSMR_aSMR_grid_HalfStep_WNAv12_2.csv"))
 
 ## 5. All Feasibility (in part modelled in TreeSuitabilityPrediction project)
-feasible <- fread(paste0(cloud_dir, "Feasibility_v12_1.csv"))
-feas.list <- feasible[,.(SS_NoSpace, Spp, Feasible)]
+feasible <- fread(paste0(cloud_dir, "Feasibility_v12_9.csv"))# %>% filter(!Retire == 'x')
+feasible.add.info <- full_join(feasible, bgc.info, by = "BGC") %>% dplyr::select(DataSet, Source, Zone, BGC, SS_NoSpace,SppVar, Feasible) 
+feas.list <- feasible.add.info[,.(SS_NoSpace, SppVar, Feasible)]
 
 ## 6. All Site Index (modelled in SIBEC_Modelled project)
 sibec <- fread(paste0(cloud_dir, "PredSI_May2020.csv"))
 
 ## 7. SIBEC 2013 summarised
-sibec13 <- fread(paste0(cloud_dir, "SIBEC_2013_Summary.csv"))
-colnames(sibec13)[2:3] <- c("Spp","SI13")
+#sibec13 <- fread(paste0(cloud_dir, "SIBEC_2013_Summary.csv"))
+#colnames(sibec13)[2:3] <- c("Spp","SI13")
 ```
    
+
 These are the duplicates in each table
 
 ```{r duplicates}
@@ -80,33 +94,34 @@ ss.list[,fD := NULL]
 ss.list <- unique(ss.list)
 ### edatopic
 any(duplicated(eda_small))
-eda_small[,fD := .N > 1, by = .(SS_NoSpace,Edatopic,Special)]
+eda_small[,fD := .N > 1, by = .(SS_NoSpace,Edatopic)]
 fwrite(eda_small[(fD)],paste0(outFold,"Edatopic_duplicated.csv"))
 eda_small <- unique(eda_small[,!"fD"])
 
 ###feasibility
 any(duplicated(feas.list))
-feas.list[,fD := .N > 1, by = .(SS_NoSpace,Spp)]
+feas.list[,fD := .N > 1, by = .(SS_NoSpace,SppVar)]
 fwrite(feas.list[(fD)],paste0(outFold,"Feasibility_duplicated.csv"))
-feas.list <- unique(feas.list[,!"fD"], by = c("SS_NoSpace","Spp"))
-
+feas.list <- unique(feas.list[,!"fD"], by = c("SS_NoSpace","SppVar"))
+# feasible <- feasible %>% distinct()
+#fwrite(feasible, paste0(cloud_dir, "Feasibility_v12_9.csv"))
 ### sibec
-any(duplicated(sibec))
-sibec[,fD := .N > 1, by = .(SS_NoSpace,Spp)]
-fwrite(sibec[(fD)], paste0(outFold,"Sibec_duplicated.csv"))
-sibec <- unique(sibec[,!"fD"], by = c("SS_NoSpace","Spp"))
+# any(duplicated(sibec))
+# sibec[,fD := .N > 1, by = .(SS_NoSpace,Spp)]
+# fwrite(sibec[(fD)], paste0(outFold,"Sibec_duplicated.csv"))
+# sibec <- unique(sibec[,!"fD"], by = c("SS_NoSpace","Spp"))
 
 ```
 
 ```{r find_missing}
 
-### compare BGC_modelled with BGC list
+### 1. compare BGC_modelled with BGC list
 setkey(bgc_modelled,BGC)
 setkey(bgc.info, BGC)
-###matching BGC in model and list of units
+### matching BGC in model and list of units
 bgc_compare <- merge(bgc_modelled, bgc.info, all = T)
-bgc_no.info <- bgc_compare[is.na(modelled),.(BGC)]
-bgc_no.model <- bgc_compare[is.na(Source),.(BGC)]
+bgc_no.model <- bgc_compare[is.na(modelled),.(BGC)]
+bgc_no.info <- bgc_compare[is.na(Source),.(BGC)]
 
 ###matching modelled BGCs and Site Series
 setkey(bgc_modelled,BGC)
@@ -117,49 +132,72 @@ ss_NoBGC <- bgc_ss[is.na(SS_NoSpace),.(BGC)]
 
 ###matching site series and edatopic space
 setkey(eda_small,SS_NoSpace)
-ss_eda <- merge(ss.list, eda_small, all = T)
+ss.list$current <- "yes"
+ss_eda2 <- merge(ss.list, eda_small, all = T) %>% filter(!is.na(current))
+ss_noeda <- ss_eda2[is.na(Edatopic),.(SS_NoSpace)]
 
+ss_eda2 <- ss_eda2 %>% dplyr::select(Source, BGC, SS_NoSpace, Edatopic, SpecialCode) 
+fwrite(ss_eda2, paste0(cloud_dir, "Edatopic_v12_test.csv"))
+
+
+###missing edatopic space
+# BGC.eda.used <- ss_eda2 %>% dplyr::select(BGC, Edatopic) %>% distinct() 
+# BGC.eda.used <- left_join(eda.space, BGC.eda.used)
+
+eda.matrix <- ss_eda2 %>% filter(!is.na(Edatopic)) %>% dplyr::select(BGC, Edatopic) %>% count(BGC, Edatopic) %>%  
+  pivot_wider(id_cols = "BGC", names_from = "Edatopic", values_from = "n", values_fill = 99)
+eda.noexpected <- c("C0", "D0", "E0", "C1", "D1", "E1", "D2", "E2", "D3", "E3") #positions commonly unfilled
+##can reduce list to identify specific SMR positions - then add working units to fill
+eda.missing <- eda.matrix %>% pivot_longer(!BGC, names_to = "Edatopic", values_to = "count") %>% filter(count == 99) %>% 
+  filter(!Edatopic %in% eda.noexpected) 
+#%>%   filter(Edatopic == "D5")
+
+setkey(eda.space,Edatopic)
+setkey(eda_small, Edatopic)
+eda.miss <- merge(eda.space, eda_small, all = T) %>% filter(is.na(Edatopic))
+#eda.miss <- merge(eda.space, ss_eda, all = T) %>% filter(is.na(Edatopic))
+
+
+### missing aSMR by BGC
 setkey(asmr, BGC)
-bgc_asmr <- merge(bgc_modelled, asmr, all = T)
+bgc_asmr <- merge(bgc.info, asmr, all = T)
 asmr_NoBGC <- bgc_asmr[is.na(rSMR0),.(BGC)]
 bgc_NoASMR <- bgc_asmr[is.na(Zone),.(BGC)]
 
-###missing edatopic space by BGC
-
-
+eda_nospace <- bgc_asmr[is.na(rSMR0),.(BGC)]
+bgc_NoASMR <- bgc_asmr[is.na(Zone),.(BGC)]
 ###matching feasibility and site series
-setkey(feas.list, SS_NoSpace, Spp)
-ss_feas <- merge(ss.list, feas.list, by = "SS_NoSpace", all = T)
-ss_NoFeas <- ss_feas[is.na(Spp),.(SS_NoSpace)]
+setkey(feas.list, SS_NoSpace, SppVar)
+ss_feas <- merge(ss.list, feas.list, by = "SS_NoSpace", all = T) #%>% dplyr::filter(!Retire == 'x')
+ss_NoFeas <- ss_feas[is.na(SppVar),.(SS_NoSpace)]
 feas_NoSS <- ss_feas[is.na(BGC),.(SS_NoSpace)]
 
-setkey(sibec, SS_NoSpace, Spp)
-ss_feas_sibec <- merge(ss_feas, sibec, by = c("SS_NoSpace","Spp"), all = T)
-
-sibec_missingSpp <- ss_feas_sibec[,all(is.na(SIPred)), by = Spp][(V1),.(Spp)]
-sibec_missingSS <- ss_feas_sibec[,all(is.na(SIPred)), by = SS_NoSpace][(V1),.(SS_NoSpace)]
-temp <- ss_feas_sibec[(!Spp %in% sibec_missingSpp) & (!SS_NoSpace %in% sibec_missingSS),]
-##add SIBEC 2013 approximation
-ss_feas_sibec <- merge(ss_feas_sibec, sibec13, by = c("SS_NoSpace","Spp"),all = T)
-
-
-setkey(eda_small,SS_NoSpace)
-ss_eda <- merge(ss.list, eda_small, all = T)
-
-setkey(asmr, BGC)
-bgc_asmr <- merge(bgc_modelled, asmr, all = T)
-asmr_NoBGC <- bgc_asmr[is.na(rSMR0),.(BGC)]
-bgc_NoASMR <- bgc_asmr[is.na(Zone),.(BGC)]
+### matching sibec and site series
+# setkey(sibec, SS_NoSpace, Spp)
+# ss_feas_sibec <- merge(ss_feas, sibec, by = c("SS_NoSpace","Spp"), all = T)
+# 
+# sibec_missingSpp <- ss_feas_sibec[,all(is.na(SIPred)), by = Spp][(V1),.(Spp)]
+# sibec_missingSS <- ss_feas_sibec[,all(is.na(SIPred)), by = SS_NoSpace][(V1),.(SS_NoSpace)]
+# temp <- ss_feas_sibec[(!Spp %in% sibec_missingSpp) & (!SS_NoSpace %in% sibec_missingSS),]
+# 
+# ##add SIBEC 2013 approximation
+# ss_feas_sibec <- merge(ss_feas_sibec, sibec13, by = c("SS_NoSpace","Spp"),all = T)
+addSS <- unique(feas_NoSS)
+fwrite(addSS, paste0(outFold, "AddSiteSeries.csv"))
 
 outFold <- "./Missing/"
+fwrite(bgc_no.model, paste0(outFold, "BGC!modelled.csv"))
+fwrite(bgc_no.info, paste0(outFold, "BGC!info.csv"))
 fwrite(bgc_NoSS, paste0(outFold, "BGC!SS.csv"))
 fwrite(ss_NoBGC, paste0(outFold, "SS!BGC.csv"))
 fwrite(ss_NoFeas, paste0(outFold, "SS!Feas.csv"))
 fwrite(feas_NoSS, paste0(outFold, "Feas!SS.csv"))
-fwrite(sibec_missingSpp, paste0(outFold, "Feas!SI_Spp.csv"))
-fwrite(sibec_missingSS, paste0(outFold, "Feas!SI_SS.csv"))
+
 fwrite(asmr_NoBGC, paste0(outFold, "aSMR!BGC.csv"))
 fwrite(bgc_NoASMR, paste0(outFold, "BGC!aSMR.csv"))
+fwrite(sibec_missingSpp, paste0(outFold, "Feas!SI_Spp.csv"))
+fwrite(sibec_missingSS, paste0(outFold, "Feas!SI_SS.csv"))
+
 ```
 
 1. There are no BGCs without a matching SS. SS without matching BGCs are `r ss_NoBGC`.
