@@ -50,11 +50,11 @@ bgc.info <- fread(paste0(cloud_dir,"All_BGCs_Info_v12_2.csv")) %>% filter(!Retir
   dplyr::select(Source, Zone, BGC, DataSet)
 
 ## 2. All Site Series (info table from from USA_BGC project)
-ss.list <- fread(paste0(cloud_dir, "WNA_SSeries_v12_9.csv"))#%>% filter(!Retire == 'x') %>% dplyr::select(-Retire)
+ss.list <- fread(paste0(cloud_dir, "WNA_SSeries_v12_10.csv"))#%>% filter(!Retire == 'x') %>% dplyr::select(-Retire)
 #ss.list <- ss[,.(BGC, SS_NoSpace)]
 
 ## 3. All Edatopic (info table from USA_BGC project)
-eda <- fread(paste0(cloud_dir, "Edatopic_v12_9.csv")) 
+eda <- fread(paste0(cloud_dir, "Edatopic_v12_10.csv")) 
 ## remove retired site series
 setkey(eda, SS_NoSpace)
 setkey(retiredSS, SS_NoSpace)
@@ -67,7 +67,7 @@ eda.space <- fread("./inputs/edatopic_space.csv")
 asmr <- fread(paste0(cloud_dir, "modelled_rSMR_aSMR_grid_HalfStep_WNAv12_2.csv"))
 
 ## 5. All Feasibility (in part modelled in TreeSuitabilityPrediction project)
-feasible <- fread(paste0(cloud_dir, "Feasibility_v12_9.csv"))# %>% filter(!Retire == 'x')
+feasible <- fread(paste0(cloud_dir, "Feasibility_v12_10.csv"))# %>% filter(!Retire == 'x')
 feasible.add.info <- full_join(feasible, bgc.info, by = "BGC") %>% dplyr::select(DataSet, Source, Zone, BGC, SS_NoSpace,SppVar, Feasible) 
 feas.list <- feasible.add.info[,.(SS_NoSpace, SppVar, Feasible)]
 
